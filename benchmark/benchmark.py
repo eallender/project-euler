@@ -44,13 +44,11 @@ def init_database():
             max_time REAL,
             stdev REAL,
             timestamp TEXT,
+            answer TEXT,
             PRIMARY KEY (problem, language)
         )
     """
     )
-
-    conn.commit()
-    return conn
 
 
 def discover_problems(language, project_root):
@@ -84,13 +82,15 @@ def discover_problems(language, project_root):
 
 
 def run_command(cmd):
-    """Execute a command silently."""
-    subprocess.run(
+    """Execute a command and capture output."""
+    result = subprocess.run(
         cmd,
-        stdout=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         check=True,
+        text=True,
     )
+    return result.stdout.strip()
 
 
 def benchmark(cmd, runs, warmup):
@@ -100,17 +100,27 @@ def benchmark(cmd, runs, warmup):
         run_command(cmd)
 
     times = []
+    answer = None
     for _ in range(runs):
         start = time.perf_counter()
-        run_command(cmd)
+        output = run_command(cmd)
         end = time.perf_counter()
         times.append(end - start)
+
+        # Capture answer from first run and validate consistency
+        if answer is None:
+            answer = output
+        elif answer != output:
+            raise ValueError(
+                f"Inconsistent output detected: expected '{answer}', got '{output}'"
+            )
 
     return {
         "avg": statistics.mean(times),
         "min": min(times),
         "max": max(times),
         "stdev": statistics.stdev(times) if len(times) > 1 else 0.0,
+        "answer": answer,
     }
 
 
@@ -118,7 +128,22 @@ def update_database(conn, problem, language, stats):
     """Update database only if the new time is faster than the existing record."""
     cursor = conn.cursor()
 
-    # Check if record exists
+    # Check for any existing answer for this problem (across all languages)
+    cursor.execute(
+        "SELECT answer FROM benchmarks WHERE problem = ? AND answer IS NOT NULL LIMIT 1",
+        (problem,),
+    )
+    existing_answer = cursor.fetchone()
+
+    # Validate answer consistency across languages
+    if existing_answer is not None:
+        if stats["answer"] != existing_answer[0]:
+            raise ValueError(
+                f"Answer mismatch for problem {problem}: "
+                f"expected '{existing_answer[0]}', got '{stats['answer']}'"
+            )
+
+    # Check if record exists for this specific language
     cursor.execute(
         "SELECT min_time FROM benchmarks WHERE problem = ? AND language = ?",
         (problem, language),
@@ -129,8 +154,8 @@ def update_database(conn, problem, language, stats):
     if existing is None:
         cursor.execute(
             """
-            INSERT INTO benchmarks (problem, language, min_time, avg_time, max_time, stdev, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO benchmarks (problem, language, min_time, avg_time, max_time, stdev, timestamp, answer)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 problem,
@@ -140,6 +165,7 @@ def update_database(conn, problem, language, stats):
                 stats["max"],
                 stats["stdev"],
                 timestamp,
+                stats["answer"],
             ),
         )
         conn.commit()
@@ -148,7 +174,7 @@ def update_database(conn, problem, language, stats):
         cursor.execute(
             """
             UPDATE benchmarks
-            SET min_time = ?, avg_time = ?, max_time = ?, stdev = ?, timestamp = ?
+            SET min_time = ?, avg_time = ?, max_time = ?, stdev = ?, timestamp = ?, answer = ?
             WHERE problem = ? AND language = ?
         """,
             (
@@ -157,6 +183,7 @@ def update_database(conn, problem, language, stats):
                 stats["max"],
                 stats["stdev"],
                 timestamp,
+                stats["answer"],
                 problem,
                 language,
             ),

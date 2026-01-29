@@ -7,7 +7,6 @@ def main():
         count -= 1
 
     print(total)
-    assert total == 1726705333297000
 
 
 if __name__ == "__main__":

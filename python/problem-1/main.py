@@ -7,7 +7,6 @@ def main():
             total += index
 
     print(total)
-    assert total == 233168
 
 
 if __name__ == "__main__":
