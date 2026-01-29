@@ -1,0 +1,11 @@
+# Benchmark outputs
+benchmark/benchmark_results.db
+benchmark/results.csv
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python

@@ -1,0 +1,7 @@
+[project]
+name = "benchmark"
+version = "0.1.0"
+description = "Standardized benchmarking from Project Euler problems"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
