@@ -18,14 +18,14 @@ MD_FILE = BENCHMARK_DIR / "BENCHMARKS.md"
 LANGUAGE_CONFIGS = {
     "python": {
         "dir": "python",
-        "command_prefix": ["uv", "run", "python"],
+        "command_prefix": [str(Path(__file__).parent.parent / "python" / ".venv" / "bin" / "python")],
         "file_pattern": "main.py",
     },
-    # "rust": {
-    #     "dir": "rust",
-    #     "command_prefix": ["cargo", "run", "--release", "--manifest-path"],
-    #     "file_pattern": "Cargo.toml",
-    # },
+    "rust": {
+        "dir": "rust",
+        "command_prefix": ["cargo", "run", "--release", "--quiet", "--manifest-path"],
+        "file_pattern": "Cargo.toml",
+    },
 }
 
 
@@ -49,6 +49,8 @@ def init_database():
         )
     """
     )
+
+    return conn
 
 
 def discover_problems(language, project_root):
@@ -303,12 +305,23 @@ def main():
                 flush=True,
             )
 
-            if language == "python":
+            # For Rust, pre-compile and run the binary directly
+            if language == "rust":
+                cargo_toml = problem["path"] / config["file_pattern"]
+                # Build the binary
+                subprocess.run(
+                    ["cargo", "build", "--release", "--manifest-path", str(cargo_toml)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=True,
+                )
+                # Run the binary directly
+                binary_path = problem["path"] / "target" / "release" / problem["path"].name
+                cmd = [str(binary_path)]
+            else:
                 cmd = config["command_prefix"] + [
                     str(problem["path"] / config["file_pattern"])
                 ]
-            else:
-                cmd = config["command_prefix"] + [str(problem["path"])]
 
             try:
                 stats = benchmark(cmd, RUNS, WARMUP)
